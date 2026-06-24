@@ -1,30 +1,37 @@
 ﻿using eg_mu.Models;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.OpenApi.Models;
+using Newtonsoft.Json;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// ============================================================
-// 1. DATABASE & INFRASTRUCTURE SERVICES
-// ============================================================
+// 1. Database Configuration
 var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
 builder.Services.AddDbContext<GrandEgyptianContext>(options =>
-    options.UseSqlServer(connectionString));
+    options.UseSqlServer(connectionString, sqlOptions =>
+    {
+        sqlOptions.EnableRetryOnFailure(); // مهم جداً لاستقرار الاتصال بالسيرفر الأونلاين
+    }));
 
-builder.Services.AddControllers();
-builder.Services.AddEndpointsApiExplorer();
+// 2. Controllers & JSON Configuration
+builder.Services.AddControllers()
+    .AddNewtonsoftJson(options =>
+        options.SerializerSettings.ReferenceLoopHandling = ReferenceLoopHandling.Ignore
+    );
 
-// ============================================================
-// 2. CORS & DOCUMENTATION (السياسات العامة)
-// ============================================================
+// 3. CORS Policy - Allowing Front-end to connect
 builder.Services.AddCors(options =>
 {
     options.AddPolicy("AllowAll", policy =>
     {
-        policy.AllowAnyOrigin().AllowAnyMethod().AllowAnyHeader();
+        policy.AllowAnyOrigin()
+              .AllowAnyMethod()
+              .AllowAnyHeader();
     });
 });
 
+// 4. Swagger Generation Configuration
+builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(options =>
 {
     options.SwaggerDoc("v1", new OpenApiInfo
@@ -33,33 +40,35 @@ builder.Services.AddSwaggerGen(options =>
         Version = "v1",
         Description = "Professional Backend Service for GEM (Open Access Mode)"
     });
-    // تم إزالة إعدادات الـ Security من Swagger لتسهيل التجربة المباشرة
 });
 
 var app = builder.Build();
 
-// ============================================================
-// 3. REQUEST PIPELINE (الترتيب الجديد البسيط)
-// ============================================================
+// 5. HTTP Pipeline Configuration (Middlewares)
 
-// تفعيل واجهة Swagger
+// Swagger must be available in both Development and Production
 app.UseSwagger();
 app.UseSwaggerUI(options =>
 {
     options.SwaggerEndpoint("/swagger/v1/swagger.json", "GEM API V1");
     options.DocumentTitle = "GEM API Documentation";
+    options.RoutePrefix = "swagger"; // يفتح الصفحة عند مسار /swagger
     options.DisplayRequestDuration();
 });
+
+if (app.Environment.IsDevelopment())
+{
+    app.UseDeveloperExceptionPage();
+}
 
 app.UseHttpsRedirection();
 app.UseStaticFiles();
 
 app.UseRouting();
 
-// تفعيل الـ CORS
+// CORS must be called between UseRouting and UseAuthorization
 app.UseCors("AllowAll");
 
-// تم إزالة UseAuthentication لأننا لا نستخدم التوكن الآن
 app.UseAuthorization();
 
 app.MapControllers();

@@ -6,7 +6,6 @@ namespace eg_mu.Controllers
 {
     [Route("api/[controller]")]
     [ApiController]
-   
     public class StaffController : ControllerBase
     {
         private readonly GrandEgyptianContext _context;
@@ -16,13 +15,6 @@ namespace eg_mu.Controllers
             _context = context;
         }
 
-        // دالة مؤقتة لتجربة البيانات (حط الـ ID بتاع أي موظف عندك في الداتابيز هنا)
-        private int GetUserId()
-        {
-            // هنفترض إنك بتجرب بموظف رقمه 1.. غير الرقم ده براحتك حسب الداتا اللي عندك
-            return 1;
-        }
-
         // ==========================================
         // 1. إدارة مهامي الشخصية (My Daily Tasks)
         // ==========================================
@@ -30,9 +22,9 @@ namespace eg_mu.Controllers
         [HttpGet("my-tasks")]
         public async Task<IActionResult> GetMyTasks()
         {
-            int staffId = GetUserId();
+            // يجلب كل المهمات لكل الموظفين مباشرة وبدون أي قيود أو فلترة
             var tasks = await _context.DailyTasks
-                .Where(t => t.StaffId == staffId)
+                .Include(t => t.Staff)
                 .OrderByDescending(t => t.TaskDate)
                 .AsNoTracking()
                 .ToListAsync();
@@ -41,13 +33,13 @@ namespace eg_mu.Controllers
         }
 
         [HttpPut("complete-task/{taskId}")]
-        public async Task<IActionResult> MarkTaskAsCompleted(int taskId)
+        public async Task<IActionResult> MarkTaskAsCompleted(int taskId, [FromQuery] int staffId)
         {
-            int staffId = GetUserId();
+            // يستقبل الـ staffId مباشرة من الـ Swagger لتحديد الموظف المسؤول عن المهمة
             var task = await _context.DailyTasks
                 .FirstOrDefaultAsync(t => t.TaskId == taskId && t.StaffId == staffId);
 
-            if (task == null) return NotFound(new { Message = "المهمة غير موجودة أو ليست ملكك" });
+            if (task == null) return NotFound(new { Message = "المهمة غير موجودة أو ليست لهذا الموظف" });
 
             task.IsCompleted = true;
             await _context.SaveChangesAsync();
@@ -58,10 +50,23 @@ namespace eg_mu.Controllers
         // 2. الحضور والانصراف (Attendance)
         // ==========================================
 
-        [HttpPost("check-in")]
-        public async Task<IActionResult> CheckIn()
+        [HttpGet("all-attendance")]
+        public async Task<IActionResult> GetAllAttendance()
         {
-            int staffId = GetUserId();
+            // يجلب كل سجلات الحضور لجميع الموظفين في النظام مباشرة
+            var attendanceList = await _context.Attendances
+                .Include(a => a.Staff)
+                .OrderByDescending(a => a.CheckIn)
+                .AsNoTracking()
+                .ToListAsync();
+
+            return Ok(new { Status = "Success", Count = attendanceList.Count, Data = attendanceList });
+        }
+
+        [HttpPost("check-in")]
+        public async Task<IActionResult> CheckIn([FromQuery] int staffId)
+        {
+            // يستقبل الـ staffId مباشرة لتسجيل حضور أي موظف تفرضه في الـ Swagger
             var today = DateTime.Today;
 
             var alreadyCheckedIn = await _context.Attendances
@@ -81,15 +86,15 @@ namespace eg_mu.Controllers
         }
 
         [HttpPut("check-out")]
-        public async Task<IActionResult> CheckOut()
+        public async Task<IActionResult> CheckOut([FromQuery] int staffId)
         {
-            int staffId = GetUserId();
+            // يستقبل الـ staffId مباشرة لتسجيل انصراف الموظف المحدد
             var today = DateTime.Today;
 
             var attendance = await _context.Attendances
                 .FirstOrDefaultAsync(a => a.StaffId == staffId && a.CheckIn >= today && a.CheckOut == null);
 
-            if (attendance == null) return BadRequest(new { Message = "لا يوجد سجل حضور مفتوح حالياً" });
+            if (attendance == null) return BadRequest(new { Message = "لا يوجد سجل حضور مفتوح حالياً لهذا الموظف" });
 
             attendance.CheckOut = DateTime.Now;
             await _context.SaveChangesAsync();

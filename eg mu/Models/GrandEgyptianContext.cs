@@ -46,7 +46,7 @@ public partial class GrandEgyptianContext : DbContext
 
     protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
     {
-        optionsBuilder.UseSqlServer("Server=DESKTOP-8F377B2;Database=Grand Egyptian Museum DB;Trusted_Connection=True;TrustServerCertificate=True;");
+       
     }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
